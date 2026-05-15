@@ -29,12 +29,13 @@
             <p>Your private AI assistant.</p>
 
             <input id="login-username" type="text" placeholder="Username">
+            <input id="login-email" type="email" placeholder="Email">
             <input id="login-password" type="password" placeholder="Password">
 
             <button id="login-btn" type="button">Login</button>
             <button id="create-account-btn" class="ghost-btn" type="button">Create Account</button>
 
-            <p class="auth-note">Development build account screen</p>
+            <p id="auth-status" class="auth-note">Login or create an account.</p>
         </div>
     </section>
 
@@ -48,9 +49,7 @@
                     <p class="subtitle">Your local AI assistant</p>
                 </div>
 
-                <button id="close-sidebar-btn" class="small-btn" type="button">
-                    ×
-                </button>
+                <button id="close-sidebar-btn" class="small-btn" type="button">×</button>
             </div>
 
             <div class="status-box" aria-live="polite">
@@ -58,20 +57,13 @@
                 <span id="status-text">Checking Jolli API...</span>
             </div>
 
-            <button id="new-chat-btn" class="new-chat-btn" type="button">
-                + New Chat
-            </button>
-
-            <button id="new-group-btn" class="new-chat-btn" type="button">
-                + New Group
-            </button>
+            <button id="new-chat-btn" class="new-chat-btn" type="button">+ New Chat</button>
+            <button id="new-group-btn" class="new-chat-btn" type="button">+ New Group</button>
 
             <div class="history-panel">
                 <div class="history-header">
                     <h2>Chat History</h2>
-                    <button id="refresh-history-btn" class="small-btn" type="button" title="Refresh chat history">
-                        ↻
-                    </button>
+                    <button id="refresh-history-btn" class="small-btn" type="button" title="Refresh chat history">↻</button>
                 </div>
 
                 <div id="chat-history" class="chat-history">
@@ -82,9 +74,7 @@
             <div class="history-panel groups-panel">
                 <div class="history-header">
                     <h2>Groups</h2>
-                    <button id="refresh-groups-btn" class="small-btn" type="button" title="Refresh groups">
-                        ↻
-                    </button>
+                    <button id="refresh-groups-btn" class="small-btn" type="button" title="Refresh groups">↻</button>
                 </div>
 
                 <div id="group-history" class="chat-history group-history">
@@ -103,18 +93,14 @@
 
         <section class="chat" aria-label="Jolli chat">
             <header class="chat-header">
-                <button id="open-sidebar-btn" class="small-btn menu-btn" type="button">
-                    ☰
-                </button>
+                <button id="open-sidebar-btn" class="small-btn menu-btn" type="button">☰</button>
 
                 <div class="chat-title-wrap">
                     <div class="chat-label" id="chat-mode-label">Current chat</div>
                     <h2 id="active-chat-title">New chat</h2>
                 </div>
 
-                <div id="save-status" class="save-status" aria-live="polite">
-                    Ready
-                </div>
+                <div id="save-status" class="save-status" aria-live="polite">Ready</div>
             </header>
 
             <div id="messages" class="messages" aria-live="polite">
@@ -125,9 +111,7 @@
             </div>
 
             <form id="chat-form" class="input-bar">
-                <button type="button" id="voice-btn">
-                    🎙
-                </button>
+                <button type="button" id="voice-btn">🎙</button>
 
                 <input
                     id="message-input"
@@ -140,31 +124,17 @@
                     required
                 >
 
-                <button type="submit" id="send-btn">
-                    Send
-                </button>
+                <button type="submit" id="send-btn">Send</button>
             </form>
         </section>
     </main>
 
     <script>
         window.addEventListener("DOMContentLoaded", () => {
-            const app = document.getElementById("app");
-            const auth = document.getElementById("auth-screen");
-
-            const loginBtn = document.getElementById("login-btn");
-            const createBtn = document.getElementById("create-account-btn");
-
             const sidebar = document.getElementById("mobile-sidebar");
             const overlay = document.getElementById("sidebar-overlay");
             const openSidebar = document.getElementById("open-sidebar-btn");
             const closeSidebar = document.getElementById("close-sidebar-btn");
-
-            function enterApp() {
-                localStorage.setItem("jolli_ios_logged_in", "yes");
-                auth.classList.add("hidden");
-                app.classList.remove("hidden");
-            }
 
             function showSidebar() {
                 sidebar.classList.add("open");
@@ -176,16 +146,9 @@
                 overlay.classList.remove("show");
             }
 
-            loginBtn.addEventListener("click", enterApp);
-            createBtn.addEventListener("click", enterApp);
-
-            openSidebar.addEventListener("click", showSidebar);
-            closeSidebar.addEventListener("click", hideSidebar);
-            overlay.addEventListener("click", hideSidebar);
-
-            if (localStorage.getItem("jolli_ios_logged_in") === "yes") {
-                enterApp();
-            }
+            openSidebar?.addEventListener("click", showSidebar);
+            closeSidebar?.addEventListener("click", hideSidebar);
+            overlay?.addEventListener("click", hideSidebar);
 
             console.log("Jolli iOS index.html loaded");
             console.log("new-group-btn exists:", !!document.getElementById("new-group-btn"));
