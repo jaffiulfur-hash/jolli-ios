@@ -1075,8 +1075,62 @@ function speakText(text, onEnd = null) {
 }
 
 window.addEventListener("beforeunload", () => {
-    stopJolliCustomVoice();
 });
+
+function startVoiceInput() {
+    if (isBusy) return;
+
+    if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: "JOLLI_START_VOSK",
+        }));
+
+        addMessage("Jolli", "Listening with Jolli iOS voice...", "assistant");
+        return;
+    }
+
+    startBrowserSpeechRecognition();
+}
+
+function startBrowserSpeechRecognition() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+        addMessage("Jolli", "Voice input is not available in this browser.", "assistant");
+        return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    addMessage("Jolli", "Listening from browser microphone...", "assistant");
+
+    recognition.start();
+
+    recognition.onresult = event => {
+        const text = event.results?.[0]?.[0]?.transcript || "";
+
+        if (!text.trim()) {
+            addMessage("Jolli", "I did not hear anything clearly.", "assistant");
+            return;
+        }
+
+        input.value = text.trim();
+        sendMessage(text.trim());
+    };
+
+    recognition.onerror = event => {
+        addMessage("Jolli", "Speech recognition error: " + event.error, "assistant");
+    };
+}
+
+window.jolliReceiveVoiceText = function(text) {
+    if (!text || !text.trim()) return;
+    input.value = text.trim();
+    sendMessage(text.trim());
+};
 
 /* ---------------------------------------------------------
  * Events
