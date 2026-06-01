@@ -905,29 +905,9 @@ async function sendGroupMessage(text) {
 
 let jolliCurrentVoiceAudio = null;
 
-function cleanJolliTtsText(text) {
-    return String(text || "")
-        .replace(/```[\s\S]*?```/g, "code block omitted")
-        .replace(/https?:\/\/\S+/g, "link omitted")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 3000);
-}
 
-function stopJolliCustomVoice() {
-    if (!jolliCurrentVoiceAudio) {
-        return;
-    }
 
-    try {
-        jolliCurrentVoiceAudio.pause();
-        jolliCurrentVoiceAudio.currentTime = 0;
-    } catch {
-        // ignore
-    }
 
-    jolliCurrentVoiceAudio = null;
-}
 
 function continueJolliCallAfterSpeech() {
     if (!jolliCallActive || !jolliCallContinuous) {
@@ -985,6 +965,118 @@ function wireJolliCallScreen() {
 
     updateJolliCallButtons();
 }
+
+/* ---------------------------------------------------------
+ * Voice: private cloned TTS + Expo/Vosk bridge
+ * --------------------------------------------------------- */
+
+let jolliCurrentVoiceAudio = null;
+
+function cleanJolliTtsText(text) {
+    return String(text || "")
+        .replace(/```[\s\S]*?```/g, "code block omitted")
+        .replace(/https?:\/\/\S+/g, "link omitted")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 3000);
+}
+
+function stopJolliCustomVoice() {
+    const audio = jolliCurrentVoiceAudio || window.jolliCurrentVoiceAudio || null;
+
+    if (!audio) {
+        jolliCurrentVoiceAudio = null;
+        window.jolliCurrentVoiceAudio = null;
+        return;
+    }
+
+    try {
+        audio.pause();
+        audio.currentTime = 0;
+    } catch {
+        // ignore
+    }
+
+    jolliCurrentVoiceAudio = null;
+    window.jolliCurrentVoiceAudio = null;
+}
+
+async function playJolliCustomVoice(text, onEnd = null) {
+    const finish = () => {
+        if (typeof onEnd === "function") {
+            onEnd();
+        }
+    };
+
+    const cleaned = cleanJolliTtsText(text);
+
+    if (!cleaned || !apiConfigured() || !isLoggedIn()) {
+        finish();
+        return;
+    }
+
+    try {
+        stopJolliCustomVoice();
+
+        const response = await apiFetch("/api/voice/my-voice", {
+            method: "POST",
+            body: JSON.stringify({
+                text: cleaned,
+            }),
+        }, 180000);
+
+        if (!response.ok) {
+            console.warn("Jolli cloned voice failed:", response.status);
+            finish();
+            return;
+        }
+
+        const blob = await response.blob();
+
+        if (!blob || blob.size === 0) {
+            console.warn("Jolli cloned voice returned empty audio.");
+            finish();
+            return;
+        }
+
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+
+        jolliCurrentVoiceAudio = audio;
+        window.jolliCurrentVoiceAudio = audio;
+
+        const cleanup = () => {
+            URL.revokeObjectURL(url);
+
+            if (jolliCurrentVoiceAudio === audio) {
+                jolliCurrentVoiceAudio = null;
+            }
+
+            if (window.jolliCurrentVoiceAudio === audio) {
+                window.jolliCurrentVoiceAudio = null;
+            }
+
+            finish();
+        };
+
+        audio.onended = cleanup;
+        audio.onerror = cleanup;
+
+        await audio.play();
+
+    } catch (error) {
+        console.warn("Jolli cloned voice playback failed:", error);
+        finish();
+    }
+}
+
+function speakText(text, onEnd = null) {
+    playJolliCustomVoice(text, onEnd);
+}
+
+window.addEventListener("beforeunload", () => {
+    stopJolliCustomVoice();
+});
 
 /* ---------------------------------------------------------
  * Events
