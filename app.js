@@ -903,11 +903,6 @@ async function sendGroupMessage(text) {
  * Voice: private cloned TTS + Expo/Vosk bridge
  * --------------------------------------------------------- */
 
-let jolliCurrentVoiceAudio = null;
-
-
-
-
 
 function continueJolliCallAfterSpeech() {
     if (!jolliCallActive || !jolliCallContinuous) {
@@ -968,6 +963,11 @@ function wireJolliCallScreen() {
 
 /* ---------------------------------------------------------
  * Voice: private cloned TTS + Expo/Vosk bridge
+ * --------------------------------------------------------- */
+
+
+/* ---------------------------------------------------------
+ * Voice: private cloned TTS playback
  * --------------------------------------------------------- */
 
 let jolliCurrentVoiceAudio = null;
@@ -1075,6 +1075,7 @@ function speakText(text, onEnd = null) {
 }
 
 window.addEventListener("beforeunload", () => {
+    stopJolliCustomVoice();
 });
 
 function startVoiceInput() {
