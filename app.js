@@ -904,6 +904,306 @@ async function sendGroupMessage(text) {
  * --------------------------------------------------------- */
 
 
+/* Jolli voice call screen restored */
+
+let jolliCallActive = false;
+let jolliCallListening = false;
+let jolliCallRecognition = null;
+let jolliCallContinuous = false;
+
+function createJolliCallScreen() {
+    if (document.getElementById("jolli-call-screen")) {
+        return;
+    }
+
+    const callBtn = document.createElement("button");
+    callBtn.id = "jolli-call-open-btn";
+    callBtn.type = "button";
+    callBtn.className = "jolli-call-open-btn";
+    callBtn.textContent = "Call Jolli";
+
+    const callScreen = document.createElement("div");
+    callScreen.id = "jolli-call-screen";
+    callScreen.className = "jolli-call-screen hidden";
+
+    callScreen.innerHTML = `
+        <div class="jolli-call-bg"></div>
+
+        <div class="jolli-call-card">
+            <div class="jolli-call-top">
+                <button id="jolli-call-close-btn" type="button" class="jolli-call-icon-btn">×</button>
+                <div>
+                    <div class="jolli-call-label">Voice call</div>
+                    <h2>Jolli</h2>
+                </div>
+                <div id="jolli-call-state" class="jolli-call-state">Disconnected</div>
+            </div>
+
+            <div class="jolli-call-orb-wrap">
+                <div id="jolli-call-orb" class="jolli-call-orb idle"></div>
+                <div id="jolli-call-pulse" class="jolli-call-pulse"></div>
+            </div>
+
+            <div id="jolli-call-status" class="jolli-call-status">
+                Tap connect to start speaking with Jolli.
+            </div>
+
+            <div id="jolli-call-transcript" class="jolli-call-transcript"></div>
+
+            <div class="jolli-call-controls">
+                <button id="jolli-call-connect-btn" type="button" class="jolli-call-main-btn">Connect</button>
+                <button id="jolli-call-mic-btn" type="button" class="jolli-call-secondary-btn" disabled>Speak</button>
+                <button id="jolli-call-stop-voice-btn" type="button" class="jolli-call-secondary-btn">Stop voice</button>
+                <button id="jolli-call-end-btn" type="button" class="jolli-call-end-btn" disabled>End</button>
+            </div>
+        </div>
+    `;
+
+    const target =
+        document.querySelector(".chat-header") ||
+        document.querySelector(".sidebar-top") ||
+        document.body;
+
+    target.appendChild(callBtn);
+    document.body.appendChild(callScreen);
+
+    wireJolliCallScreen();
+}
+
+function setJolliCallStatus(text) {
+    const status = document.getElementById("jolli-call-status");
+    if (status) status.textContent = text;
+}
+
+function setJolliCallState(text) {
+    const state = document.getElementById("jolli-call-state");
+    if (state) state.textContent = text;
+}
+
+function setJolliCallOrb(mode) {
+    const orb = document.getElementById("jolli-call-orb");
+    if (!orb) return;
+
+    orb.classList.remove("idle", "listening", "thinking", "speaking", "error");
+    orb.classList.add(mode || "idle");
+}
+
+function addJolliCallTranscript(name, text, type) {
+    const transcript = document.getElementById("jolli-call-transcript");
+    if (!transcript) return;
+
+    const item = document.createElement("div");
+    item.className = `jolli-call-line ${type || ""}`;
+
+    const who = document.createElement("strong");
+    who.textContent = name;
+
+    const body = document.createElement("span");
+    body.textContent = text;
+
+    item.appendChild(who);
+    item.appendChild(body);
+
+    transcript.appendChild(item);
+    transcript.scrollTop = transcript.scrollHeight;
+}
+
+function openJolliCallScreen() {
+    const screen = document.getElementById("jolli-call-screen");
+    if (screen) screen.classList.remove("hidden");
+}
+
+function closeJolliCallScreen() {
+    endJolliCall();
+
+    const screen = document.getElementById("jolli-call-screen");
+    if (screen) screen.classList.add("hidden");
+}
+
+function updateJolliCallButtons() {
+    const connectBtn = document.getElementById("jolli-call-connect-btn");
+    const micBtn = document.getElementById("jolli-call-mic-btn");
+    const endBtn = document.getElementById("jolli-call-end-btn");
+
+    if (connectBtn) connectBtn.disabled = jolliCallActive;
+    if (micBtn) micBtn.disabled = !jolliCallActive || jolliCallListening;
+    if (endBtn) endBtn.disabled = !jolliCallActive;
+}
+
+function connectJolliCall() {
+    if (!apiConfigured()) {
+        setJolliCallStatus("API config missing. Jolli cannot connect.");
+        setJolliCallOrb("error");
+        return;
+    }
+
+    if (!isLoggedIn()) {
+        setJolliCallStatus("Please log in before calling Jolli.");
+        setJolliCallOrb("error");
+        showAuthScreen("Please log in before calling Jolli.");
+        return;
+    }
+
+    jolliCallActive = true;
+    jolliCallContinuous = true;
+
+    setJolliCallState("Connected");
+    setJolliCallStatus("Connected. Tap Speak once. Jolli will keep listening after each reply.");
+    setJolliCallOrb("idle");
+    updateJolliCallButtons();
+
+    addJolliCallTranscript("Jolli", "Voice call connected.", "assistant");
+    playJolliCustomVoice("Voice call connected. Tap speak once and I will keep listening.");
+}
+
+function endJolliCall() {
+    jolliCallActive = false;
+    jolliCallListening = false;
+    jolliCallContinuous = false;
+
+    if (jolliCallRecognition) {
+        try {
+            jolliCallRecognition.stop();
+        } catch {
+            // ignore
+        }
+
+        jolliCallRecognition = null;
+    }
+
+    stopJolliCustomVoice();
+
+    setJolliCallState("Disconnected");
+    setJolliCallStatus("Call ended.");
+    setJolliCallOrb("idle");
+    updateJolliCallButtons();
+}
+
+function getSpeechRecognitionEngine() {
+    return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
+function startJolliCallListening() {
+    if (!jolliCallActive || jolliCallListening) {
+        return;
+    }
+
+    const SpeechRecognition = getSpeechRecognitionEngine();
+
+    if (!SpeechRecognition) {
+        setJolliCallStatus("Speech recognition is not available in this browser.");
+        setJolliCallOrb("error");
+        addJolliCallTranscript("Jolli", "Speech recognition is not available in this browser.", "assistant");
+        return;
+    }
+
+    const recognition = new SpeechRecognition();
+
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.maxAlternatives = 1;
+
+    jolliCallRecognition = recognition;
+    jolliCallListening = true;
+
+    setJolliCallState("Listening");
+    setJolliCallStatus("Listening...");
+    setJolliCallOrb("listening");
+    updateJolliCallButtons();
+
+    recognition.start();
+
+    recognition.onresult = event => {
+        const text = event.results?.[0]?.[0]?.transcript || "";
+
+        if (!text.trim()) {
+            setJolliCallStatus("I did not hear anything clearly.");
+            setJolliCallOrb("idle");
+            return;
+        }
+
+        addJolliCallTranscript("You", text, "user");
+        sendJolliCallMessage(text.trim());
+    };
+
+    recognition.onerror = event => {
+        jolliCallListening = false;
+        setJolliCallState("Connected");
+        setJolliCallStatus("Mic error: " + event.error);
+        setJolliCallOrb("error");
+        updateJolliCallButtons();
+    };
+
+    recognition.onend = () => {
+        jolliCallListening = false;
+
+        if (jolliCallActive) {
+            setJolliCallState("Connected");
+            updateJolliCallButtons();
+        }
+    };
+}
+
+async function sendJolliCallMessage(text) {
+    if (!jolliCallActive) {
+        return;
+    }
+
+    try {
+        setJolliCallState("Thinking");
+        setJolliCallStatus("Jolli is thinking...");
+        setJolliCallOrb("thinking");
+        updateJolliCallButtons();
+
+        if (!currentChatId) {
+            const title = makeChatTitle(text);
+            await createChat(title);
+        }
+
+        const response = await apiFetch("/api/chat", {
+            method: "POST",
+            body: JSON.stringify({
+                message: text,
+                chat_id: currentChatId,
+                ...(typeof getSelectedModelPayload === "function" ? getSelectedModelPayload() : {}),
+            }),
+        }, 120000);
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            throw new Error(data.detail || `HTTP ${response.status}`);
+        }
+
+        if (data.chat_id) {
+            currentChatId = data.chat_id;
+        }
+
+        const reply = data.reply || "I did not get a response.";
+
+        addJolliCallTranscript("Jolli", reply, "assistant");
+
+        setJolliCallState("Speaking");
+        setJolliCallStatus("Jolli is speaking...");
+        setJolliCallOrb("speaking");
+
+        await playJolliCustomVoice(reply, continueJolliCallAfterSpeech);
+
+        addMessage("You", text, "user");
+        addMessage("Jolli", reply, "assistant");
+
+        setSaveStatus("Saved");
+        await loadChatHistory();
+
+    } catch (error) {
+        addJolliCallTranscript("Jolli", "Call error: " + error.message, "assistant");
+        setJolliCallStatus("Call error: " + error.message);
+        setJolliCallOrb("error");
+        updateJolliCallButtons();
+    }
+}
+
 function continueJolliCallAfterSpeech() {
     if (!jolliCallActive || !jolliCallContinuous) {
         return;
@@ -1133,6 +1433,20 @@ window.jolliReceiveVoiceText = function(text) {
     sendMessage(text.trim());
 };
 
+/* Jolli extra feature fallbacks */
+
+function createExtraFeaturesPanel() {
+    // Extra tools panel disabled or not installed.
+}
+
+async function loadJolliModels() {
+    // Model picker disabled or not installed.
+}
+
+function getSelectedModelPayload() {
+    return {};
+}
+
 /* ---------------------------------------------------------
  * Events
  * --------------------------------------------------------- */
@@ -1210,11 +1524,22 @@ if (createAccountBtn) {
 async function bootLoggedIn() {
     showAppShell();
     addLogoutButton();
-    createJolliCallScreen();
-    createExtraFeaturesPanel();
+
+    if (typeof createJolliCallScreen === "function") {
+        createJolliCallScreen();
+    }
+
+    if (typeof createExtraFeaturesPanel === "function") {
+        createExtraFeaturesPanel();
+    }
+
     renderWelcomeMessage();
     await checkStatus();
-    await loadJolliModels();
+
+    if (typeof loadJolliModels === "function") {
+        await loadJolliModels();
+    }
+
     await loadChatHistory();
     await loadGroups();
 }
