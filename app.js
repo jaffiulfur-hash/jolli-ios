@@ -903,104 +903,98 @@ async function sendGroupMessage(text) {
  * Voice: browser fallback + Expo/Vosk bridge
  * --------------------------------------------------------- */
 
-const JolliVoice = {
-    rate: Number(localStorage.getItem("jolli_voice_rate") || "0.95"),
-    pitch: Number(localStorage.getItem("jolli_voice_pitch") || "0.9"),
-    volume: Number(localStorage.getItem("jolli_voice_volume") || "1"),
-    voiceName: localStorage.getItem("jolli_voice_name") || "",
+let jolliCurrentVoiceAudio = null;
 
-    supported() {
-        return "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
-    },
+function cleanJolliTtsText(text) {
+    return String(text || "")
+        .replace(/```[\s\S]*?```/g, "code block omitted")
+        .replace(/https?:\/\/\S+/g, "link omitted")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 3000);
+}
 
-    stop() {
-        if (this.supported()) {
-            window.speechSynthesis.cancel();
-        }
-    },
-
-    getVoice() {
-        if (!this.supported()) {
-            return null;
-        }
-
-        const voices = window.speechSynthesis.getVoices();
-
-        if (this.voiceName) {
-            const selected = voices.find(voice => voice.name === this.voiceName);
-            if (selected) {
-                return selected;
-            }
+function stopJolliCustomVoice() {
+    if (jolliCurrentVoiceAudio) {
+        try {
+            jolliCurrentVoiceAudio.pause();
+            jolliCurrentVoiceAudio.currentTime = 0;
+        } catch {
+            // ignore
         }
 
-        return (
-            voices.find(voice => voice.lang.toLowerCase().startsWith("en")) ||
-            voices[0] ||
-            null
-        );
-    },
-
-    clean(text) {
-        return String(text || "")
-            .replace(/```[\s\S]*?```/g, "code block omitted")
-            .replace(/https?:\/\/\S+/g, "link omitted")
-            .replace(/\s+/g, " ")
-            .trim()
-            .slice(0, 3000);
-    },
-
-    speak(text) {
-        if (!this.supported()) {
-            return;
-        }
-
-        const cleaned = this.clean(text);
-
-        if (!cleaned) {
-            return;
-        }
-
-        this.stop();
-
-        const utterance = new SpeechSynthesisUtterance(cleaned);
-        const voice = this.getVoice();
-
-        if (voice) {
-            utterance.voice = voice;
-            utterance.lang = voice.lang;
-        } else {
-            utterance.lang = "en-US";
-        }
-
-        utterance.rate = Math.max(0.5, Math.min(2, this.rate));
-        utterance.pitch = Math.max(0, Math.min(2, this.pitch));
-        utterance.volume = Math.max(0, Math.min(1, this.volume));
-
-        window.speechSynthesis.speak(utterance);
+        jolliCurrentVoiceAudio = null;
     }
-};
+}
 
-window.JolliVoice = JolliVoice;
+async function playJolliCustomVoice(text, onEnd = null) {
+    const finish = () => {
+        if (typeof onEnd === "function") {
+            onEnd();
+        }
+    };
 
-function speakText(text) {
-    JolliVoice.speak(text);
+    const cleaned = cleanJolliTtsText(text);
+
+    if (!cleaned) {
+        finish();
+        return;
+    }
+
+    if (!apiConfigured() || !isLoggedIn()) {
+        finish();
+        return;
+    }
+
+    try {
+        stopJolliCustomVoice();
+
+        const response = await apiFetch("/api/voice/my-voice", {
+            method: "POST",
+            body: JSON.stringify({
+                text: cleaned,
+            }),
+        }, 180000);
+
+        if (!response.ok) {
+            finish();
+            return;
+        }
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+
+        jolliCurrentVoiceAudio = audio;
+
+        audio.onended = () => {
+            URL.revokeObjectURL(url);
+            jolliCurrentVoiceAudio = null;
+            finish();
+        };
+
+        audio.onerror = () => {
+            URL.revokeObjectURL(url);
+            jolliCurrentVoiceAudio = null;
+            finish();
+        };
+
+        await audio.play();
+
+    } catch {
+        finish();
+    }
+}
+
+function speakText(text, onEnd = null) {
+    playJolliCustomVoice(text, onEnd);
 }
 
 window.addEventListener("beforeunload", () => {
     JolliVoice.stop();
 });
 
-document.addEventListener("click", () => {
-    if (JolliVoice.supported()) {
-        window.speechSynthesis.getVoices();
-    }
-}, { once: true });
 
-if ("speechSynthesis" in window) {
-    window.speechSynthesis.onvoiceschanged = () => {
-        JolliVoice.getVoice();
-    };
-}
 
 
 function startVoiceInput() {
@@ -1312,6 +1306,7 @@ function wireExtraFeaturesPanel() {
 let jolliCallActive = false;
 let jolliCallListening = false;
 let jolliCallRecognition = null;
+let jolliCallContinuous = false;
 
 function createJolliCallScreen() {
     if (document.getElementById("jolli-call-screen")) {
@@ -1458,18 +1453,20 @@ function connectJolliCall() {
     }
 
     jolliCallActive = true;
+    jolliCallContinuous = true;
     setJolliCallState("Connected");
-    setJolliCallStatus("Connected. Tap Speak and talk to Jolli.");
+    setJolliCallStatus("Connected. Tap Speak once. Jolli will keep listening after each reply.");
     setJolliCallOrb("idle");
     updateJolliCallButtons();
 
     addJolliCallTranscript("Jolli", "Voice call connected.", "assistant");
-    speakText("Voice call connected. Tap speak and talk to me.");
+    speakText("Voice call connected. Tap speak once and I will keep listening.");
 }
 
 function endJolliCall() {
     jolliCallActive = false;
     jolliCallListening = false;
+    jolliCallContinuous = false;
 
     if (jolliCallRecognition) {
         try {
@@ -1481,11 +1478,7 @@ function endJolliCall() {
         jolliCallRecognition = null;
     }
 
-    if (window.JolliVoice && typeof window.JolliVoice.stop === "function") {
-        window.JolliVoice.stop();
-    } else if ("speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-    }
+    stopJolliCustomVoice();
 
     setJolliCallState("Disconnected");
     setJolliCallStatus("Call ended.");
@@ -1602,7 +1595,7 @@ async function sendJolliCallMessage(text) {
         setJolliCallStatus("Jolli is speaking...");
         setJolliCallOrb("speaking");
 
-        speakText(reply);
+        await playJolliCustomVoice(reply, continueJolliCallAfterSpeech);
 
         // Also mirror the voice call into the normal chat UI.
         addMessage("You", text, "user");
@@ -1611,14 +1604,16 @@ async function sendJolliCallMessage(text) {
         setSaveStatus("Saved");
         await loadChatHistory();
 
-        setTimeout(() => {
-            if (jolliCallActive) {
-                setJolliCallState("Connected");
-                setJolliCallStatus("Tap Speak to continue.");
-                setJolliCallOrb("idle");
-                updateJolliCallButtons();
-            }
-        }, 1000);
+        if (!jolliCallContinuous) {
+            setTimeout(() => {
+                if (jolliCallActive) {
+                    setJolliCallState("Connected");
+                    setJolliCallStatus("Listening will continue automatically.");
+                    setJolliCallOrb("idle");
+                    updateJolliCallButtons();
+                }
+            }, 1000);
+        }
 
     } catch (error) {
         addJolliCallTranscript("Jolli", "Call error: " + error.message, "assistant");
@@ -1626,6 +1621,92 @@ async function sendJolliCallMessage(text) {
         setJolliCallOrb("error");
         updateJolliCallButtons();
     }
+}
+
+
+
+async function playJolliCustomVoice(text, onEnd = null) {
+    const finish = () => {
+        if (typeof onEnd === "function") {
+            onEnd();
+        }
+    };
+
+    const fallback = () => {
+        speakText(text, finish);
+    };
+
+    if (!apiConfigured() || !isLoggedIn()) {
+        fallback();
+        return;
+    }
+
+    try {
+        const response = await apiFetch("/api/voice/my-voice", {
+            method: "POST",
+            body: JSON.stringify({
+                text,
+            }),
+        }, 180000);
+
+        if (!response.ok) {
+            fallback();
+            return;
+        }
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+
+        window.jolliCurrentVoiceAudio = audio;
+
+        audio.onended = () => {
+            URL.revokeObjectURL(url);
+            finish();
+        };
+
+        audio.onerror = () => {
+            URL.revokeObjectURL(url);
+            fallback();
+        };
+
+        await audio.play();
+
+    } catch {
+        fallback();
+    }
+}
+
+function stopJolliCustomVoice() {
+    if (window.jolliCurrentVoiceAudio) {
+        try {
+            window.jolliCurrentVoiceAudio.pause();
+            window.jolliCurrentVoiceAudio.currentTime = 0;
+        } catch {
+            // ignore
+        }
+
+        window.jolliCurrentVoiceAudio = null;
+    }
+
+    stopJolliCustomVoice();
+}
+
+function continueJolliCallAfterSpeech() {
+    if (!jolliCallActive || !jolliCallContinuous) {
+        return;
+    }
+
+    setJolliCallState("Connected");
+    setJolliCallStatus("Listening again...");
+    setJolliCallOrb("idle");
+    updateJolliCallButtons();
+
+    setTimeout(() => {
+        if (jolliCallActive && jolliCallContinuous && !jolliCallListening) {
+            startJolliCallListening();
+        }
+    }, 650);
 }
 
 function wireJolliCallScreen() {
@@ -1658,13 +1739,9 @@ function wireJolliCallScreen() {
 
     if (stopVoiceBtn) {
         stopVoiceBtn.addEventListener("click", () => {
-            if (window.JolliVoice && typeof window.JolliVoice.stop === "function") {
-                window.JolliVoice.stop();
-            } else if ("speechSynthesis" in window) {
-                window.speechSynthesis.cancel();
-            }
+            stopJolliCustomVoice();
 
-            setJolliCallStatus(jolliCallActive ? "Voice stopped. Tap Speak to continue." : "Voice stopped.");
+            setJolliCallStatus(jolliCallActive ? "Voice stopped. Listening will continue automatically." : "Voice stopped.");
             setJolliCallOrb(jolliCallActive ? "idle" : "idle");
         });
     }
