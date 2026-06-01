@@ -349,6 +349,106 @@ code {
     border-radius: 7px;
 }
 
+
+/* Jolli extra tools */
+
+.jolli-extra-panel {
+    margin-top: 16px;
+    padding: 13px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: rgba(24, 24, 36, 0.72);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.jolli-extra-header {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.jolli-extra-header strong {
+    font-size: 15px;
+    color: var(--text);
+}
+
+.jolli-extra-header span {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.jolli-tool-label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.jolli-tool-label select,
+.jolli-tool-row input {
+    width: 100%;
+    min-width: 0;
+    padding: 11px 12px;
+    border: 1px solid var(--border);
+    border-radius: 13px;
+    background: var(--panel);
+    color: var(--text);
+    outline: none;
+}
+
+.jolli-tool-label select:focus,
+.jolli-tool-row input:focus {
+    border-color: rgba(167, 139, 250, 0.8);
+}
+
+.jolli-tool-row {
+    display: flex;
+    gap: 8px;
+}
+
+.jolli-tool-row button {
+    flex: 0 0 auto;
+    padding: 10px 11px;
+    border: 1px solid var(--border);
+    border-radius: 13px;
+    background: var(--panel3);
+    color: var(--text);
+    cursor: pointer;
+    font-weight: 800;
+    font-size: 12px;
+}
+
+.jolli-tool-row button:active {
+    transform: scale(0.97);
+}
+
+.jolli-tool-output {
+    max-height: 190px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    color: #d7d7e7;
+    font-size: 12px;
+    line-height: 1.4;
+    border-radius: 14px;
+    background: rgba(8, 8, 12, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 10px;
+}
+
+.jolli-tool-output:empty {
+    display: none;
+}
+
+.jolli-tool-output.bad {
+    color: #ffb4b4;
+    background: rgba(255, 77, 77, 0.08);
+}
+
+
 /* Chat */
 
 .chat {
@@ -507,6 +607,310 @@ code {
     opacity: 0.6;
     cursor: not-allowed;
 }
+
+
+/* Jolli voice call screen */
+
+.jolli-call-open-btn {
+    flex: 0 0 auto;
+    padding: 10px 13px;
+    border: 1px solid rgba(167, 139, 250, 0.42);
+    border-radius: 999px;
+    background: rgba(124, 58, 237, 0.22);
+    color: var(--text);
+    font-weight: 800;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.jolli-call-open-btn:active {
+    transform: scale(0.97);
+}
+
+.jolli-call-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding:
+        calc(env(safe-area-inset-top) + 18px)
+        16px
+        calc(env(safe-area-inset-bottom) + 18px);
+    background: rgba(0, 0, 0, 0.68);
+    backdrop-filter: blur(24px);
+}
+
+.jolli-call-bg {
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(circle at top, rgba(124, 58, 237, 0.38), transparent 42%),
+        radial-gradient(circle at bottom, rgba(236, 72, 153, 0.22), transparent 38%);
+    pointer-events: none;
+}
+
+.jolli-call-card {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 460px;
+    height: min(720px, 94dvh);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 32px;
+    background: rgba(12, 12, 18, 0.86);
+    box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55);
+}
+
+.jolli-call-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.jolli-call-label {
+    color: var(--muted);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.jolli-call-top h2 {
+    margin: 2px 0 0;
+    font-size: 34px;
+    letter-spacing: -0.05em;
+}
+
+.jolli-call-state {
+    padding: 7px 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #d9d9ea;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.jolli-call-icon-btn {
+    width: 42px;
+    height: 42px;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    background: var(--panel2);
+    color: var(--text);
+    font-size: 28px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.jolli-call-orb-wrap {
+    position: relative;
+    min-height: 210px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.jolli-call-orb {
+    position: relative;
+    z-index: 2;
+    width: 138px;
+    height: 138px;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle at 34% 24%, rgba(255, 255, 255, 0.98), transparent 13%),
+        linear-gradient(135deg, var(--accent), var(--accent2));
+    box-shadow:
+        0 0 35px rgba(124, 58, 237, 0.7),
+        0 0 90px rgba(236, 72, 153, 0.25);
+    transition: transform 0.18s ease, filter 0.18s ease;
+}
+
+.jolli-call-pulse {
+    position: absolute;
+    width: 175px;
+    height: 175px;
+    border-radius: 50%;
+    background: rgba(124, 58, 237, 0.16);
+    filter: blur(2px);
+}
+
+.jolli-call-orb.idle {
+    animation: jolliCallIdle 3s infinite ease-in-out;
+}
+
+.jolli-call-orb.listening {
+    animation: jolliCallListening 0.9s infinite ease-in-out;
+    filter: hue-rotate(45deg);
+}
+
+.jolli-call-orb.thinking {
+    animation: jolliCallThinking 1.2s infinite linear;
+    filter: saturate(1.35);
+}
+
+.jolli-call-orb.speaking {
+    animation: jolliCallSpeaking 0.42s infinite ease-in-out;
+    filter: brightness(1.18);
+}
+
+.jolli-call-orb.error {
+    background:
+        radial-gradient(circle at 34% 24%, rgba(255, 255, 255, 0.98), transparent 13%),
+        linear-gradient(135deg, #ff4d4d, #ec4899);
+    animation: jolliCallError 0.5s 3 ease-in-out;
+}
+
+@keyframes jolliCallIdle {
+    0%, 100% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.035);
+    }
+}
+
+@keyframes jolliCallListening {
+    0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 0 35px rgba(68, 209, 122, 0.55), 0 0 90px rgba(124, 58, 237, 0.24);
+    }
+
+    50% {
+        transform: scale(1.09);
+        box-shadow: 0 0 55px rgba(68, 209, 122, 0.85), 0 0 120px rgba(124, 58, 237, 0.36);
+    }
+}
+
+@keyframes jolliCallThinking {
+    0% {
+        transform: rotate(0deg) scale(1);
+    }
+
+    50% {
+        transform: rotate(180deg) scale(1.05);
+    }
+
+    100% {
+        transform: rotate(360deg) scale(1);
+    }
+}
+
+@keyframes jolliCallSpeaking {
+    0%, 100% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.12);
+    }
+}
+
+@keyframes jolliCallError {
+    0%, 100% {
+        transform: translateX(0);
+    }
+
+    25% {
+        transform: translateX(-5px);
+    }
+
+    75% {
+        transform: translateX(5px);
+    }
+}
+
+.jolli-call-status {
+    text-align: center;
+    color: #d8d8ea;
+    font-size: 15px;
+    line-height: 1.4;
+}
+
+.jolli-call-transcript {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    background: rgba(8, 8, 12, 0.42);
+}
+
+.jolli-call-line {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 11px;
+    font-size: 14px;
+    line-height: 1.42;
+}
+
+.jolli-call-line strong {
+    color: #aaa;
+    font-size: 12px;
+}
+
+.jolli-call-line span {
+    color: var(--text);
+}
+
+.jolli-call-line.user {
+    text-align: right;
+}
+
+.jolli-call-line.user strong {
+    color: #d7c7ff;
+}
+
+.jolli-call-line.assistant strong {
+    color: #ffb8df;
+}
+
+.jolli-call-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.jolli-call-controls button {
+    min-height: 48px;
+    border: 0;
+    border-radius: 999px;
+    color: white;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.jolli-call-main-btn {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+}
+
+.jolli-call-secondary-btn {
+    background: var(--panel3);
+    border: 1px solid var(--border) !important;
+}
+
+.jolli-call-end-btn {
+    grid-column: 1 / -1;
+    background: linear-gradient(135deg, #ef4444, #b91c1c);
+}
+
+.jolli-call-controls button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.jolli-call-controls button:active:not(:disabled) {
+    transform: scale(0.97);
+}
+
 
 /* Typing */
 
