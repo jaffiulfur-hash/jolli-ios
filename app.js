@@ -1299,7 +1299,146 @@ function stopJolliCustomVoice() {
 
     jolliCurrentVoiceAudio = null;
     window.jolliCurrentVoiceAudio = null;
+
+    if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: "JOLLI_STOP_TTS_AUDIO",
+        }));
+    }
 }
+
+
+function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+
+        reader.onloadend = () => {
+            const result = String(reader.result || "");
+            const comma = result.indexOf(",");
+
+            if (comma === -1) {
+                resolve(result);
+            } else {
+                resolve(result.slice(comma + 1));
+            }
+        };
+
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+
+function playAudioBlobInBrowser(blob, onEnd = null) {
+    const finish = () => {
+        if (typeof onEnd === "function") {
+            onEnd();
+        }
+    };
+
+    try {
+        stopJolliCustomVoice();
+
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+
+        jolliCurrentVoiceAudio = audio;
+        window.jolliCurrentVoiceAudio = audio;
+
+        const cleanup = () => {
+            URL.revokeObjectURL(url);
+
+            if (jolliCurrentVoiceAudio === audio) {
+                jolliCurrentVoiceAudio = null;
+            }
+
+            if (window.jolliCurrentVoiceAudio === audio) {
+                window.jolliCurrentVoiceAudio = null;
+            }
+
+            finish();
+        };
+
+        audio.onended = cleanup;
+        audio.onerror = cleanup;
+
+        audio.play().catch(error => {
+            console.warn("Browser audio playback failed:", error);
+            cleanup();
+        });
+
+    } catch (error) {
+        console.warn("Browser audio setup failed:", error);
+        finish();
+    }
+}
+
+async function playAudioBlobInIOS(blob, text, onEnd = null) {
+    const finish = () => {
+        if (typeof onEnd === "function") {
+            onEnd();
+        }
+    };
+
+    if (!window.ReactNativeWebView) {
+        playAudioBlobInBrowser(blob, finish);
+        return;
+    }
+
+    try {
+        const audioBase64 = await blobToBase64(blob);
+        const playbackId = `jolli-tts-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+        window.jolliPendingNativeTts = window.jolliPendingNativeTts || {};
+        window.jolliPendingNativeTts[playbackId] = finish;
+
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: "JOLLI_PLAY_TTS_AUDIO",
+            id: playbackId,
+            mime: blob.type || "audio/wav",
+            audio_base64: audioBase64,
+            text: cleanJolliTtsText(text),
+        }));
+
+        /*
+         * Safety timeout so the call loop never gets stuck if native iOS does not
+         * send JOLLI_TTS_ENDED back.
+         */
+        setTimeout(() => {
+            if (window.jolliPendingNativeTts && window.jolliPendingNativeTts[playbackId]) {
+                const cb = window.jolliPendingNativeTts[playbackId];
+                delete window.jolliPendingNativeTts[playbackId];
+                cb();
+            }
+        }, 90000);
+
+    } catch (error) {
+        console.warn("iOS native TTS bridge failed:", error);
+        playAudioBlobInBrowser(blob, finish);
+    }
+}
+
+window.jolliNativeTtsEnded = function(id) {
+    if (!window.jolliPendingNativeTts || !window.jolliPendingNativeTts[id]) {
+        return;
+    }
+
+    const finish = window.jolliPendingNativeTts[id];
+    delete window.jolliPendingNativeTts[id];
+    finish();
+};
+
+window.jolliNativeTtsError = function(id, message) {
+    console.warn("Native iOS TTS playback error:", message || "unknown error");
+
+    if (!window.jolliPendingNativeTts || !window.jolliPendingNativeTts[id]) {
+        return;
+    }
+
+    const finish = window.jolliPendingNativeTts[id];
+    delete window.jolliPendingNativeTts[id];
+    finish();
+};
+
 
 async function playJolliCustomVoice(text, onEnd = null) {
     const finish = () => {
@@ -1339,30 +1478,11 @@ async function playJolliCustomVoice(text, onEnd = null) {
             return;
         }
 
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-
-        jolliCurrentVoiceAudio = audio;
-        window.jolliCurrentVoiceAudio = audio;
-
-        const cleanup = () => {
-            URL.revokeObjectURL(url);
-
-            if (jolliCurrentVoiceAudio === audio) {
-                jolliCurrentVoiceAudio = null;
-            }
-
-            if (window.jolliCurrentVoiceAudio === audio) {
-                window.jolliCurrentVoiceAudio = null;
-            }
-
-            finish();
-        };
-
-        audio.onended = cleanup;
-        audio.onerror = cleanup;
-
-        await audio.play();
+        if (window.ReactNativeWebView) {
+            await playAudioBlobInIOS(blob, cleaned, finish);
+        } else {
+            playAudioBlobInBrowser(blob, finish);
+        }
 
     } catch (error) {
         console.warn("Jolli cloned voice playback failed:", error);
