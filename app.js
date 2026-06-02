@@ -1471,7 +1471,8 @@ async function playJolliCustomVoice(text, onEnd = null) {
         }, 180000);
 
         if (!response.ok) {
-            console.warn("Jolli cloned voice failed:", response.status);
+            const errorText = await response.text().catch(() => "");
+            console.warn("Jolli cloned voice failed:", response.status, errorText);
             finish();
             return;
         }
