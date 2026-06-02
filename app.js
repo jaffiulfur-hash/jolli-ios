@@ -1070,6 +1070,8 @@ async function connectJolliCall() {
 
     await unlockJolliAudio();
 
+    await unlockJolliAudio();
+
     jolliCallActive = true;
     jolliCallContinuous = true;
 
@@ -1453,10 +1455,6 @@ async function playAudioBlobInBrowser(blob, onEnd = null) {
                 jolliCurrentVoiceAudio = null;
             }
 
-            if (window.jolliCurrentVoiceAudio === audio) {
-                window.jolliCurrentVoiceAudio = null;
-            }
-
             finish();
         };
 
@@ -1468,15 +1466,17 @@ async function playAudioBlobInBrowser(blob, onEnd = null) {
         audio.src = url;
         audio.load();
 
-        const playPromise = audio.play();
+        const promise = audio.play();
 
-        if (playPromise && typeof playPromise.catch === "function") {
-            playPromise.catch(async error => {
-                console.warn("Jolli cloned voice play() failed:", error);
+        if (promise && typeof promise.catch === "function") {
+            promise.catch(error => {
+                console.warn("Jolli cloned voice play failed:", error);
 
                 if (isIOSLike() || isStandalonePWA()) {
-                    setSaveStatus("Tap Call Jolli or Speak once to unlock voice.");
-                    setJolliCallStatus?.("Tap Speak once to unlock Jolli voice.");
+                    setSaveStatus("Tap Speak or Connect to unlock voice");
+                    if (typeof setJolliCallStatus === "function") {
+                        setJolliCallStatus("Tap Speak or Connect once to unlock Jolli voice.");
+                    }
                 }
 
                 cleanup();
@@ -1484,7 +1484,7 @@ async function playAudioBlobInBrowser(blob, onEnd = null) {
         }
 
     } catch (error) {
-        console.warn("Browser audio setup failed:", error);
+        console.warn("Jolli audio playback setup failed:", error);
         finish();
     }
 }
@@ -1608,11 +1608,7 @@ async function playJolliCustomVoice(text, onEnd = null) {
             setJolliCallOrb("speaking");
         }
 
-        if (window.ReactNativeWebView && window.JOLLI_USE_NATIVE_AUDIO === true) {
-            await playAudioBlobInIOS(blob, cleaned, finish);
-        } else {
-            await playAudioBlobInBrowser(blob, finish);
-        }
+        await playAudioBlobInBrowser(blob, finish);
 
     } catch (error) {
         console.warn("Jolli cloned voice playback failed:", error);
