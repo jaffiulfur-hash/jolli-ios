@@ -1457,6 +1457,12 @@ async function playJolliCustomVoice(text, onEnd = null) {
     try {
         stopJolliCustomVoice();
 
+        if (typeof setJolliCallStatus === "function" && jolliCallActive) {
+            setJolliCallState("Preparing voice");
+            setJolliCallStatus("Preparing cloned voice...");
+            setJolliCallOrb("thinking");
+        }
+
         const response = await apiFetch("/api/voice/my-voice", {
             method: "POST",
             body: JSON.stringify({
@@ -1478,7 +1484,13 @@ async function playJolliCustomVoice(text, onEnd = null) {
             return;
         }
 
-        if (window.ReactNativeWebView) {
+        if (typeof setJolliCallStatus === "function" && jolliCallActive) {
+            setJolliCallState("Speaking");
+            setJolliCallStatus("Jolli is speaking...");
+            setJolliCallOrb("speaking");
+        }
+
+        if (window.ReactNativeWebView && window.JOLLI_USE_NATIVE_AUDIO === true) {
             await playAudioBlobInIOS(blob, cleaned, finish);
         } else {
             playAudioBlobInBrowser(blob, finish);
