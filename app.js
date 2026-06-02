@@ -1054,7 +1054,7 @@ function updateJolliCallButtons() {
     if (endBtn) endBtn.disabled = !jolliCallActive;
 }
 
-function connectJolliCall() {
+async function connectJolliCall() {
     if (!apiConfigured()) {
         setJolliCallStatus("API config missing. Jolli cannot connect.");
         setJolliCallOrb("error");
@@ -1067,6 +1067,8 @@ function connectJolliCall() {
         showAuthScreen("Please log in before calling Jolli.");
         return;
     }
+
+    await unlockJolliAudio();
 
     jolliCallActive = true;
     jolliCallContinuous = true;
@@ -1107,7 +1109,9 @@ function getSpeechRecognitionEngine() {
     return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 }
 
-function startJolliCallListening() {
+async function startJolliCallListening() {
+    await unlockJolliAudio();
+
     if (!jolliCallActive || jolliCallListening) {
         return;
     }
@@ -1262,11 +1266,11 @@ function wireJolliCallScreen() {
     }
 
     if (connectBtn) {
-        connectBtn.addEventListener("click", connectJolliCall);
+        connectBtn.addEventListener("click", () => connectJolliCall());
     }
 
     if (micBtn) {
-        micBtn.addEventListener("click", startJolliCallListening);
+        micBtn.addEventListener("click", () => startJolliCallListening());
     }
 
     if (endBtn) {
@@ -1293,6 +1297,80 @@ function wireJolliCallScreen() {
 /* ---------------------------------------------------------
  * Voice: private cloned TTS playback
  * --------------------------------------------------------- */
+
+/* ---------------------------------------------------------
+ * iOS/PWA audio unlock for cloned Jolli voice
+ * --------------------------------------------------------- */
+
+let jolliAudioUnlocked = false;
+let jolliUnlockedAudio = null;
+
+function isIOSLike() {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent)
+        || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+function isStandalonePWA() {
+    return window.navigator.standalone === true
+        || window.matchMedia("(display-mode: standalone)").matches;
+}
+
+function getJolliAudioElement() {
+    if (jolliUnlockedAudio) {
+        return jolliUnlockedAudio;
+    }
+
+    const audio = document.createElement("audio");
+    audio.id = "jolli-tts-audio";
+    audio.preload = "auto";
+    audio.playsInline = true;
+    audio.setAttribute("playsinline", "true");
+    audio.setAttribute("webkit-playsinline", "true");
+
+    audio.style.display = "none";
+    document.body.appendChild(audio);
+
+    jolliUnlockedAudio = audio;
+    window.jolliCurrentVoiceAudio = audio;
+
+    return audio;
+}
+
+async function unlockJolliAudio() {
+    if (jolliAudioUnlocked) {
+        return true;
+    }
+
+    try {
+        const audio = getJolliAudioElement();
+
+        /*
+         * Tiny silent WAV. This must be played from a user gesture on iOS/PWA.
+         * After this, we reuse the same audio element for cloned voice WAVs.
+         */
+        audio.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=";
+        audio.volume = 0.01;
+
+        await audio.play();
+        audio.pause();
+        audio.currentTime = 0;
+        audio.volume = 1;
+
+        jolliAudioUnlocked = true;
+        return true;
+    } catch (error) {
+        console.warn("Jolli audio unlock failed:", error);
+        return false;
+    }
+}
+
+document.addEventListener("touchend", () => {
+    unlockJolliAudio();
+}, { once: true });
+
+document.addEventListener("click", () => {
+    unlockJolliAudio();
+}, { once: true });
 
 let jolliCurrentVoiceAudio = null;
 
@@ -1352,7 +1430,7 @@ function blobToBase64(blob) {
     });
 }
 
-function playAudioBlobInBrowser(blob, onEnd = null) {
+async function playAudioBlobInBrowser(blob, onEnd = null) {
     const finish = () => {
         if (typeof onEnd === "function") {
             onEnd();
@@ -1363,7 +1441,7 @@ function playAudioBlobInBrowser(blob, onEnd = null) {
         stopJolliCustomVoice();
 
         const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
+        const audio = getJolliAudioElement();
 
         jolliCurrentVoiceAudio = audio;
         window.jolliCurrentVoiceAudio = audio;
@@ -1385,10 +1463,25 @@ function playAudioBlobInBrowser(blob, onEnd = null) {
         audio.onended = cleanup;
         audio.onerror = cleanup;
 
-        audio.play().catch(error => {
-            console.warn("Browser audio playback failed:", error);
-            cleanup();
-        });
+        audio.pause();
+        audio.currentTime = 0;
+        audio.src = url;
+        audio.load();
+
+        const playPromise = audio.play();
+
+        if (playPromise && typeof playPromise.catch === "function") {
+            playPromise.catch(async error => {
+                console.warn("Jolli cloned voice play() failed:", error);
+
+                if (isIOSLike() || isStandalonePWA()) {
+                    setSaveStatus("Tap Call Jolli or Speak once to unlock voice.");
+                    setJolliCallStatus?.("Tap Speak once to unlock Jolli voice.");
+                }
+
+                cleanup();
+            });
+        }
 
     } catch (error) {
         console.warn("Browser audio setup failed:", error);
@@ -1518,7 +1611,7 @@ async function playJolliCustomVoice(text, onEnd = null) {
         if (window.ReactNativeWebView && window.JOLLI_USE_NATIVE_AUDIO === true) {
             await playAudioBlobInIOS(blob, cleaned, finish);
         } else {
-            playAudioBlobInBrowser(blob, finish);
+            await playAudioBlobInBrowser(blob, finish);
         }
 
     } catch (error) {
