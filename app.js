@@ -840,27 +840,51 @@ async function sendPrivateMessage(text) {
     addMessage("You", text, "user");
 
     const jolliBubble = addTypingMessage();
+    jolliBubble.classList.remove("typing-bubble");
+    jolliBubble.textContent = "";
 
-    const response = await apiFetch("/api/chat", {
+    const response = await apiFetch("/api/chat/stream", {
         method: "POST",
         body: JSON.stringify({
             message: text,
             chat_id: currentChatId,
             ...getSelectedModelPayload(),
         }),
-    }, 120000);
-
-    const data = await response.json().catch(() => ({}));
+    }, 180000);
 
     if (!response.ok) {
-        throw new Error(data.detail || `Failed to talk to Jolli backend. HTTP ${response.status}`);
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.detail || `Failed to stream Jolli response. HTTP ${response.status}`);
     }
 
-    if (data.chat_id) currentChatId = data.chat_id;
+    const chatIdHeader = response.headers.get("X-Chat-ID");
+    if (chatIdHeader) {
+        currentChatId = Number(chatIdHeader);
+    }
 
-    const reply = data.reply || "I did not get a response.";
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let reply = "";
 
-    await typeIntoBubble(jolliBubble, reply);
+    while (true) {
+        const { value, done } = await reader.read();
+
+        if (done) {
+            break;
+        }
+
+        const chunk = decoder.decode(value, { stream: true });
+        reply += chunk;
+        jolliBubble.textContent += chunk;
+        messages.scrollTop = messages.scrollHeight;
+    }
+
+    reply = reply.trim() || "I did not get a response.";
+
+    if (jolliBubble.textContent.trim() !== reply) {
+        jolliBubble.textContent = reply;
+    }
+
     speakText(reply);
 
     setSaveStatus("Saved");
@@ -1164,7 +1188,7 @@ async function sendJolliCallMessage(text) {
         const response = await apiFetch("/api/chat", {
             method: "POST",
             body: JSON.stringify({
-                message: text,
+                message: text + "\n\nVoice call mode: answer in 1 or 2 short clear spoken sentences. No long lists unless I ask.",
                 chat_id: currentChatId,
                 ...(typeof getSelectedModelPayload === "function" ? getSelectedModelPayload() : {}),
             }),
