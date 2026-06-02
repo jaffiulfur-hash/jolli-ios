@@ -1194,7 +1194,7 @@ async function sendJolliCallMessage(text) {
         const response = await apiFetch("/api/chat", {
             method: "POST",
             body: JSON.stringify({
-                message: text + "\n\nVoice call mode: answer in 1 or 2 short clear spoken sentences. No long lists unless I ask.",
+                message: text + "\n\nVoice call mode: answer in one short clear sentence unless I ask for details.",
                 chat_id: currentChatId,
                 ...(typeof getSelectedModelPayload === "function" ? getSelectedModelPayload() : {}),
             }),
