@@ -1338,6 +1338,44 @@ function getJolliAudioElement() {
     return audio;
 }
 
+
+function createSilentWavBlob(durationSeconds = 0.18, sampleRate = 24000) {
+    const numSamples = Math.max(1, Math.floor(durationSeconds * sampleRate));
+    const bytesPerSample = 2;
+    const numChannels = 1;
+    const blockAlign = numChannels * bytesPerSample;
+    const byteRate = sampleRate * blockAlign;
+    const dataSize = numSamples * blockAlign;
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
+
+    function writeString(offset, value) {
+        for (let i = 0; i < value.length; i++) {
+            view.setUint8(offset + i, value.charCodeAt(i));
+        }
+    }
+
+    writeString(0, "RIFF");
+    view.setUint32(4, 36 + dataSize, true);
+    writeString(8, "WAVE");
+
+    writeString(12, "fmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, byteRate, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, 16, true);
+
+    writeString(36, "data");
+    view.setUint32(40, dataSize, true);
+
+    // PCM silence: all remaining samples are already zero.
+    return new Blob([buffer], { type: "audio/wav" });
+}
+
+
 async function unlockJolliAudio() {
     if (jolliAudioUnlocked) {
         return true;
@@ -1345,23 +1383,52 @@ async function unlockJolliAudio() {
 
     try {
         const audio = getJolliAudioElement();
+        const silentBlob = createSilentWavBlob();
+        const silentUrl = URL.createObjectURL(silentBlob);
 
-        /*
-         * Tiny silent WAV. This must be played from a user gesture on iOS/PWA.
-         * After this, we reuse the same audio element for cloned voice WAVs.
-         */
-        audio.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=";
+        audio.src = silentUrl;
         audio.volume = 0.01;
+        audio.muted = false;
+        audio.playsInline = true;
+        audio.setAttribute("playsinline", "true");
+        audio.setAttribute("webkit-playsinline", "true");
 
         await audio.play();
+
         audio.pause();
         audio.currentTime = 0;
         audio.volume = 1;
 
+        URL.revokeObjectURL(silentUrl);
+
         jolliAudioUnlocked = true;
+        setSaveStatus("Voice unlocked");
         return true;
     } catch (error) {
         console.warn("Jolli audio unlock failed:", error);
+
+        /*
+         * Fallback: try unlocking WebAudio too. Some iOS/Safari/PWA builds
+         * accept AudioContext resume better than a silent media element.
+         */
+        try {
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+
+            if (AudioContextClass) {
+                window.jolliAudioContext = window.jolliAudioContext || new AudioContextClass();
+
+                if (window.jolliAudioContext.state !== "running") {
+                    await window.jolliAudioContext.resume();
+                }
+
+                jolliAudioUnlocked = true;
+                setSaveStatus("Voice unlocked");
+                return true;
+            }
+        } catch (audioContextError) {
+            console.warn("Jolli AudioContext unlock failed:", audioContextError);
+        }
+
         return false;
     }
 }
