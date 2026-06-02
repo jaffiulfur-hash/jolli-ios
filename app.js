@@ -1386,6 +1386,10 @@ async function unlockJolliAudio() {
         const silentBlob = createSilentWavBlob();
         const silentUrl = URL.createObjectURL(silentBlob);
 
+        audio.pause();
+        audio.removeAttribute("src");
+        audio.load();
+
         audio.src = silentUrl;
         audio.volume = 0.01;
         audio.muted = false;
@@ -1407,10 +1411,6 @@ async function unlockJolliAudio() {
     } catch (error) {
         console.warn("Jolli audio unlock failed:", error);
 
-        /*
-         * Fallback: try unlocking WebAudio too. Some iOS/Safari/PWA builds
-         * accept AudioContext resume better than a silent media element.
-         */
         try {
             const AudioContextClass = window.AudioContext || window.webkitAudioContext;
 
