@@ -1502,7 +1502,22 @@ function blobToBase64(blob) {
 }
 
 async function playAudioBlobInBrowser(blob, onEnd = null) {
+    let finished = false;
+    let watchdog = null;
+    let objectUrl = null;
+
     const finish = () => {
+        if (finished) {
+            return;
+        }
+
+        finished = true;
+
+        if (watchdog) {
+            clearTimeout(watchdog);
+            watchdog = null;
+        }
+
         if (typeof onEnd === "function") {
             onEnd();
         }
@@ -1511,29 +1526,83 @@ async function playAudioBlobInBrowser(blob, onEnd = null) {
     try {
         stopJolliCustomVoice();
 
-        const url = URL.createObjectURL(blob);
+        objectUrl = URL.createObjectURL(blob);
         const audio = getJolliAudioElement();
 
         jolliCurrentVoiceAudio = audio;
         window.jolliCurrentVoiceAudio = audio;
 
         const cleanup = () => {
-            URL.revokeObjectURL(url);
+            /*
+             * Delay cleanup very slightly so iOS/PWA does not cut the last
+             * few milliseconds of decoded audio.
+             */
+            setTimeout(() => {
+                if (objectUrl) {
+                    URL.revokeObjectURL(objectUrl);
+                    objectUrl = null;
+                }
 
-            if (jolliCurrentVoiceAudio === audio) {
-                jolliCurrentVoiceAudio = null;
-            }
+                if (jolliCurrentVoiceAudio === audio) {
+                    jolliCurrentVoiceAudio = null;
+                }
 
-            finish();
+                if (window.jolliCurrentVoiceAudio === audio) {
+                    window.jolliCurrentVoiceAudio = null;
+                }
+
+                finish();
+            }, 350);
         };
 
         audio.onended = cleanup;
-        audio.onerror = cleanup;
+
+        audio.onerror = () => {
+            console.warn("Jolli audio element error.");
+            cleanup();
+        };
+
+        audio.onloadedmetadata = () => {
+            /*
+             * Watchdog should not cut audio early.
+             * Use actual duration when available, with a generous buffer.
+             */
+            const durationSeconds = Number.isFinite(audio.duration) ? audio.duration : 30;
+            const maxPlaybackMs = Math.max(45000, Math.ceil(durationSeconds * 1000) + 12000);
+
+            if (watchdog) {
+                clearTimeout(watchdog);
+            }
+
+            watchdog = setTimeout(() => {
+                if (!finished) {
+                    console.warn("Jolli audio playback watchdog fired after duration buffer.");
+                    cleanup();
+                }
+            }, maxPlaybackMs);
+        };
 
         audio.pause();
-        audio.currentTime = 0;
-        audio.src = url;
+        audio.removeAttribute("src");
         audio.load();
+
+        audio.src = objectUrl;
+        audio.preload = "auto";
+        audio.playsInline = true;
+        audio.setAttribute("playsinline", "true");
+        audio.setAttribute("webkit-playsinline", "true");
+        audio.load();
+
+        /*
+         * Fallback watchdog if loadedmetadata never fires.
+         * This is intentionally long to avoid cutting speech.
+         */
+        watchdog = setTimeout(() => {
+            if (!finished) {
+                console.warn("Jolli audio fallback watchdog fired.");
+                cleanup();
+            }
+        }, 120000);
 
         const promise = audio.play();
 
@@ -1543,6 +1612,7 @@ async function playAudioBlobInBrowser(blob, onEnd = null) {
 
                 if (isIOSLike() || isStandalonePWA()) {
                     setSaveStatus("Tap Speak or Connect to unlock voice");
+
                     if (typeof setJolliCallStatus === "function") {
                         setJolliCallStatus("Tap Speak or Connect once to unlock Jolli voice.");
                     }
@@ -1554,6 +1624,11 @@ async function playAudioBlobInBrowser(blob, onEnd = null) {
 
     } catch (error) {
         console.warn("Jolli audio playback setup failed:", error);
+
+        if (objectUrl) {
+            URL.revokeObjectURL(objectUrl);
+        }
+
         finish();
     }
 }
